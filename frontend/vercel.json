@@ -1,11 +1,12 @@
 {
-  "name": "bouwco-frontend",
-  "framework": "nextjs",
-  "buildCommand": "npm run build",
-  "installCommand": "npm install",
-  "devCommand": "npm run dev",
-  "regions": ["arn1"],
+  "version": 2,
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/next"
+    }
+  ],
   "env": {
-    "NEXT_PUBLIC_API_PROD_URL": "https://bouwco-backend.onrender.com"
+    "NEXT_PUBLIC_API_URL": "https://api.bouwco.com"
   }
 } 
