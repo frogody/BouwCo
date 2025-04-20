@@ -35,86 +35,74 @@ def preprocess_image(image: np.ndarray) -> np.ndarray:
 def analyze_drawing(file_bytes: bytes) -> List[Dict[str, Any]]:
     """
     Process the uploaded drawing and return detected components.
-    This is a DEMO version that returns mock data.
-    
-    Args:
-        file_bytes: Raw bytes of the uploaded file
-        
-    Returns:
-        List of dictionaries containing detected components with their properties
     """
     try:
         logger.info(f"Received file of size {len(file_bytes)} bytes")
         
-        # For demo purposes, generate some random components
-        components = [
-            {
-                "type": "wall",
-                "confidence": 0.95,
-                "dimensions": {
-                    "width": 500,
-                    "height": 10,
-                    "area": 5000
-                }
-            },
-            {
-                "type": "floor",
-                "confidence": 0.98,
-                "dimensions": {
-                    "width": 500,
-                    "height": 400,
-                    "area": 200000
-                }
-            },
-            {
-                "type": "window",
-                "confidence": 0.89,
-                "dimensions": {
-                    "width": 120,
-                    "height": 150
-                }
-            },
-            {
-                "type": "door",
-                "confidence": 0.93,
-                "dimensions": {
-                    "width": 90,
-                    "height": 210
-                }
-            },
-            {
-                "type": "kitchen",
-                "confidence": 0.85,
-                "dimensions": {
-                    "width": 300,
-                    "height": 250
-                }
-            },
-            {
-                "type": "bathroom",
-                "confidence": 0.91,
-                "dimensions": {
-                    "width": 200,
-                    "height": 200
-                }
-            },
-        ]
+        # Convert bytes to numpy array
+        nparr = np.frombuffer(file_bytes, np.uint8)
+        image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         
-        # Add some randomization to make it look more realistic
-        for component in components:
-            component["dimensions"]["width"] *= random.uniform(0.9, 1.1)
-            component["dimensions"]["height"] *= random.uniform(0.9, 1.1)
-            component["confidence"] *= random.uniform(0.95, 1.0)
+        if image is None:
+            raise ValueError("Failed to decode image")
             
-            if "area" in component["dimensions"]:
-                component["dimensions"]["area"] = component["dimensions"]["width"] * component["dimensions"]["height"]
+        # Preprocess image
+        processed_image = preprocess_image(image)
+        
+        # Perform object detection if model is available
+        components = []
+        if model is not None:
+            # Run YOLO detection
+            results = model(processed_image)
+            
+            # Process each detection
+            for result in results:
+                boxes = result.boxes
+                for box in boxes:
+                    # Get coordinates and dimensions
+                    x1, y1, x2, y2 = box.xyxy[0].tolist()
+                    width = x2 - x1
+                    height = y2 - y1
+                    area = width * height
+                    confidence = box.conf[0].item()
+                    class_id = box.cls[0].item()
+                    component_type = model.names[int(class_id)]
+                    
+                    components.append({
+                        "type": component_type,
+                        "confidence": confidence,
+                        "dimensions": {
+                            "width": width,
+                            "height": height,
+                            "area": area,
+                            "x1": x1,
+                            "y1": y1,
+                            "x2": x2,
+                            "y2": y2
+                        }
+                    })
+        
+        # Extract text annotations using OCR
+        text_results = pytesseract.image_to_data(processed_image, output_type=pytesseract.Output.DICT)
+        for i in range(len(text_results["text"])):
+            if int(text_results["conf"][i]) > 60:  # Filter low confidence text
+                components.append({
+                    "type": "text_annotation",
+                    "text": text_results["text"][i],
+                    "confidence": float(text_results["conf"][i]) / 100,
+                    "dimensions": {
+                        "x": text_results["left"][i],
+                        "y": text_results["top"][i],
+                        "width": text_results["width"][i],
+                        "height": text_results["height"][i]
+                    }
+                })
         
         return components
         
     except Exception as e:
         logger.error(f"Error in analyze_drawing: {str(e)}")
-        # For demo, return empty components instead of raising
-        return []
+        raise
 
 def calculate_areas(components: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
